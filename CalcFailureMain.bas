@@ -36,40 +36,7 @@ ErrHandler:
 End Function
 
 
-'Public Function CalcFailure(ByVal FuncName As String, Optional ByVal Stage As String = "ALL") As Double
-'    On Error GoTo ErrHandler
-'    InitGlobals
-'    m_CallStack.RemoveAll
-'
-'    Dim e As CExpr
-'    Set e = EvalFunction(Trim(FuncName))
-'    If e Is Nothing Then
-'        CalcFailure = 0#: Exit Function
-'    End If
-'
-'    Dim useAllWi As Boolean
-'    Dim stageNum As Long
-'
-'    Stage = UCase(Trim(Stage))
-'    If Stage = "ALL" Then
-'        useAllWi = True
-'    Else
-'        If IsNumeric(Stage) Then
-'            stageNum = CLng(Stage)
-'            If stageNum < 0 Or stageNum > 12 Then
-'                Err.Raise 998, , "Недопустимый Stage: " & Stage
-'            End If
-'        Else
-'            Err.Raise 998, , "Недопустимый Stage: " & Stage
-'        End If
-'    End If
-'
-'    CalcFailure = CalcExprWithStage(e, useAllWi, stageNum)
-'    Exit Function
-'ErrHandler:
-'    MsgBox "Ошибка расчета '" & FuncName & "' : " & Err.Description, vbCritical
-'    CalcFailure = 0#
-'End Function
+
 
 Private Sub EnsureGlobals()
     If m_NameToID Is Nothing Then Set m_NameToID = CreateObject("Scripting.Dictionary")
@@ -78,63 +45,6 @@ Private Sub EnsureGlobals()
     If m_CallStack Is Nothing Then Set m_CallStack = CreateObject("Scripting.Dictionary")
 End Sub
 
-
-Public Function CalcExprWithStage(ByVal e As CExpr, ByVal useAllWi As Boolean, ByVal stageNum As Long) As Double
-    Dim t() As CTerm, i As Long, j As Long, total As Double, p As Double
-    Dim orderIdx As Long, currentIDs() As Long
-    
-    t = e.GetTerms()
-    If (Not Not t) = 0 Then Exit Function
-    
-    total = 0#
-    
-    For i = LBound(t) To UBound(t)
-        p = 1#
-        orderIdx = t(i).Order
-        currentIDs = t(i).FactorIDs
-        
-        ' Множитель ?
-        For j = LBound(currentIDs) To UBound(currentIDs)
-            p = p * m_LambdaValues(currentIDs(j))
-        Next j
-        
-        ' Множитель Wi
-        If useAllWi Then
-            p = p * 1#
-        Else
-            If orderIdx <= R_MAX Then
-                p = p * m_WiValues(orderIdx, stageNum)
-            End If
-        End If
-        
-        ' Умножаем на Multiplier терма
-        total = total + p * t(i).Multiplier
-    Next i
-    
-    CalcExprWithStage = total
-End Function
-
-
-
-'Public Function CalcFailure(ByVal FuncName As String, Optional ByVal Stage As Long = 0) As Double
-'    On Error GoTo ErrHandler
-'
-'    InitGlobals
-'    m_CallStack.RemoveAll
-'
-'    Dim e As CExpr
-'    Set e = EvalFunction(Trim(FuncName))
-'    If e Is Nothing Then
-'        CalcFailure = 0#: Exit Function
-'    End If
-'
-'    CalcFailure = CalcExpr(e, Stage)
-'    Exit Function
-
-'ErrHandler:
-'    MsgBox "Ошибка расчета '" & FuncName & "' : " & Err.Description, vbCritical
-'    CalcFailure = 0#
-'End Function
 
 ' ====== Инициализация глобальных кэшей ======
 Public Sub InitGlobals()
@@ -240,29 +150,6 @@ Private Sub LoadWi()
     Next i
 End Sub
 
-
-
-
-
-' ====== Загрузка Wi ======
-'Private Sub LoadWi()
-'    Dim ws As Worksheet: Set ws = Sheets(SHEET_WI)
-'    Dim lastRow As Long: lastRow = ws.Cells(ws.Rows.Count, RANGE_WI_COL_ORDER).End(xlUp).Row
-'    If lastRow < 2 Then Exit Sub
-'
-'    Dim data As Variant
-'    data = ws.Range("A2:B" & lastRow).Value
-'
-'    Dim i As Long, r As Long
-'    For i = 1 To UBound(data, 1)
-'        If IsNumeric(data(i, RANGE_WI_COL_ORDER)) Then
-'            r = CLng(data(i, RANGE_WI_COL_ORDER))
-'            If r >= 0 And r <= R_MAX Then
-'                m_WiValues(r) = ParseDouble(CStr(data(i, RANGE_WI_COL_VALUE)), "Wi r=" & r)
-'            End If
-'        End If
-'    Next i
-'End Sub
 
 ' ====== Получение уникального ID для элемента/имени ======
 Public Function GetID(ByVal sName As String) As Long
