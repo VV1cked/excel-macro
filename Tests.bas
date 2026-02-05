@@ -1,237 +1,54 @@
 Attribute VB_Name = "Tests"
 Option Explicit
 
+' ===========================
+' Tests.bas (ExternSystems + new tp/Wi rules)
+' ===========================
+
+'===========================
+' Basic smoke tests (kept)
+'===========================
+
 Sub Test_FailureCalc()
     Dim result As Double
-    Dim testFuncname As String
-        
-    testFuncname = "SYS6"
-    result = CalcFailure(testFuncname, "ALL")
-    
-End Sub
-
-Sub Test_FullCheck()
-    On Error Resume Next
-    Set m_NameToID = Nothing
-    Set m_FuncExprCache = Nothing
-    Set m_FuncDNFCache = Nothing
-    
-    Dim ws As Worksheet
-    Set ws = Sheets("Functions")
-    If ws Is Nothing Then
-        MsgBox "Ошибка листа функц"
-    End If
-    
-    Dim lastRow As Long, i As Long
-    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
-    For i = 2 To lastRow
-        Debug.Print "Строка " & i & ": [" & ws.Cells(i, 1).Value & "]"
-    Next i
-    Dim testName As String
-    testName = Trim(ws.Cells(2, 1).Value)
-    If testName = "" Then
-        Exit Sub
-    End If
-    
-    Debug.Print "Запуск CalcFailure для: '" & testName & "'"
-    
-    Debug.Print "Результат: " & CalcFailure(testName)
+    result = CalcFailure("SYS6", "ALL")
+    Debug.Print "CalcFailure(SYS6, ALL) = " & result
 End Sub
 
 Sub TestCalcFailure_SYS6()
     Dim result As Double
     Dim FuncName As String
-    Dim stage As String
+    Dim stage As Variant
     
-    FuncName = "SYS6"   ' имя новой функции на листе Functions
-    stage = "0"         ' можно пробовать "0", "1", "ALL"
+    FuncName = "SYS6"
+    stage = 0
     
     On Error GoTo ErrHandler
     
-    Debug.Print "=== Начало теста CalcFailure для " & FuncName & ", Stage=" & stage & " ==="
-    
-    ' Вызов функции
+    Debug.Print "=== Start CalcFailure test: " & FuncName & ", Stage=" & stage & " ==="
     result = CalcFailure(FuncName, stage)
-    
-    Debug.Print "Результат CalcFailure(" & FuncName & ", Stage=" & stage & ") = " & result
-    Debug.Print "=== Конец теста ==="
-    
+    Debug.Print "Result = " & result
+    Debug.Print "=== End test ==="
     Exit Sub
     
 ErrHandler:
-    Debug.Print "Ошибка: " & Err.Number & " - " & Err.Description
-    MsgBox "Ошибка в тесте CalcFailure: " & Err.Description, vbCritical
+    Debug.Print "Error: " & Err.Number & " - " & Err.Description
+    MsgBox "Error in CalcFailure test: " & Err.Description, vbCritical
 End Sub
-
-Sub TestSYS6_Terms()
-    ' Инициализация глобальных кешей
-    InitGlobals
-    
-    Dim e As CExpr
-    ' Теперь EvalFunction безопасно вызываем
-    Set e = EvalFunction("SYS6")  ' Stage = 0
-    
-    If e Is Nothing Then
-        Debug.Print "EvalFunction вернула Nothing"
-        Exit Sub
-    End If
-    
-    Dim t() As CTerm
-    t = e.GetTerms()
-    
-    If (Not Not t) = 0 Then
-        Debug.Print "EvalFunction вернула CExpr без термов!"
-        Exit Sub
-    End If
-    
-    Dim i As Long, ids() As Long
-    For i = LBound(t) To UBound(t)
-        ids = t(i).FactorIDs
-        Dim idsText As String
-        
-        ' Проверяем, что массив инициализирован и содержит хотя бы один элемент
-        If (Not Not ids) = 0 Or UBound(ids) < LBound(ids) Then
-            idsText = "(пусто)"
-        Else
-            ' Конвертируем элементы массива в строку
-            Dim j As Long
-            idsText = ""
-            For j = LBound(ids) To UBound(ids)
-                idsText = idsText & ids(j)
-                If j < UBound(ids) Then idsText = idsText & ","
-            Next j
-        End If
-        
-        Debug.Print "Term=" & t(i).key & ", Order=" & t(i).Order & _
-                    ", FactorIDs=" & idsText & ", Multiplier=" & t(i).Multiplier
-    Next
-        
-    ' Попробуем сразу расчёт
-    Dim result As Double
-    result = CalcExpr(e, 0)
-    Debug.Print "CalcExpr(SYS6, Stage=0) = " & result
-End Sub
-
-Public Sub TestCalcFailureStepByStep()
-    Dim fSYS4 As Double, fSYS5 As Double, fSYS6 As Double
-    Dim e As CExpr
-    Dim t() As CTerm
-    Dim i As Long, j As Long, ids() As Long
-    Dim idsText As String
-    
-    Debug.Print "=== Начало теста CalcFailure ==="
-    
-    ' 0. Инициализация кешей и данных
-    InitGlobals
-    
-    ' 1. Рассчитываем SYS4
-    fSYS4 = CalcFailure("SYS4", 3)
-    Debug.Print "SYS4 = " & fSYS4
-    
-    ' 2. Рассчитываем SYS5
-    fSYS5 = CalcFailure("SYS5", 3)
-    Debug.Print "SYS5 = " & fSYS5
-    
-    ' 3. Рассчитываем SYS6 (SYS5*SYS4)
-    fSYS6 = CalcFailure("SYS6", 3)
-    Debug.Print "SYS6 = " & fSYS6
-    
-    ' 4. Разбираем термы SYS6
-    Set e = EvalFunction("SYS6")
-    t = e.GetTerms()
-    
-    Debug.Print "=== Термы SYS6 ==="
-    For i = LBound(t) To UBound(t)
-        ids = t(i).FactorIDs
-        If (Not Not ids) = 0 Then
-            idsText = "(пусто)"
-        Else
-            ' Join безопасно с Variant
-            Dim vIDs() As Variant
-            ReDim vIDs(LBound(ids) To UBound(ids))
-            For j = LBound(ids) To UBound(ids): vIDs(j) = ids(j): Next j
-            idsText = Join(vIDs, ",")
-        End If
-        
-        Debug.Print "Term " & i & ": Key=" & t(i).key & _
-                    ", Order=" & t(i).Order & _
-                    ", Multiplier=" & t(i).Multiplier & _
-                    ", FactorIDs=" & idsText
-    Next i
-    
-    ' 5. Проверка произведения вручную
-    Debug.Print "Проверка: SYS5 * SYS4 = " & fSYS5 * fSYS4
-    
-    Debug.Print "=== Конец теста CalcFailure ==="
-End Sub
-
-
-Public Sub TestCalcFailureStepByStep_MultiStage()
-    Dim stages As Variant
-    stages = Array(0, 3, 12, "ALL")
-    
-    Dim s As Variant
-    Dim fSYS4 As Double, fSYS5 As Double, fSYS6 As Double
-    Dim eSYS6 As CExpr
-    Dim t() As CTerm
-    Dim i As Long, j As Long, ids() As Long
-    Dim idsText As String
-    
-    Debug.Print "=== Начало теста CalcFailure с несколькими этапами ==="
-    
-    ' Инициализация кешей и данных
-    InitGlobals
-    
-    For Each s In stages
-        Debug.Print ">>> Этап: " & s
-        
-        ' Вычисляем функции через CalcFailure
-        fSYS4 = CalcFailure("SYS4", s)
-        fSYS5 = CalcFailure("SYS5", s)
-        fSYS6 = CalcFailure("SYS6", s)
-        
-        Debug.Print "SYS4 = " & fSYS4
-        Debug.Print "SYS5 = " & fSYS5
-        Debug.Print "SYS6 = " & fSYS6
-        
-        ' Разбираем термы SYS6
-        Set eSYS6 = EvalFunction("SYS6")
-        t = eSYS6.GetTerms()
-        
-        Debug.Print "--- Термы SYS6 ---"
-        For i = LBound(t) To UBound(t)
-            ids = t(i).FactorIDs
-            If (Not Not ids) = 0 Then
-                idsText = "(пусто)"
-            Else
-                ' Join безопасно с Variant
-                Dim vIDs() As Variant
-                ReDim vIDs(LBound(ids) To UBound(ids))
-                For j = LBound(ids) To UBound(ids): vIDs(j) = ids(j): Next j
-                idsText = Join(vIDs, ",")
-            End If
-            
-            Debug.Print "Term " & i & ": Key=" & t(i).key & _
-                        ", Order=" & t(i).Order & _
-                        ", Multiplier=" & t(i).Multiplier & _
-                        ", FactorIDs=" & idsText
-        Next i
-        
-        ' Проверка произведения SYS5*SYS4
-        Debug.Print "Проверка: SYS5 * SYS4 = " & fSYS5 * fSYS4
-        Debug.Print "---------------------------------------"
-    Next s
-    
-    Debug.Print "=== Конец теста CalcFailure ==="
-End Sub
-
 
 '===========================
 ' Helpers for tests
 '===========================
 
+Private Function SheetExists(ByVal sheetName As String) As Boolean
+    On Error Resume Next
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    SheetExists = Not (ws Is Nothing)
+    On Error GoTo 0
+End Function
+
 Private Function FirstFunctionName() As String
-    ' Берём первую функцию из листа Functions (A2)
     Dim ws As Worksheet
     Set ws = ThisWorkbook.Worksheets("Functions")
 
@@ -251,9 +68,7 @@ Private Function FirstFunctionName() As String
     Err.Raise vbObjectError + 900, , "Не удалось найти ни одной функции на листе Functions"
 End Function
 
-
 Private Function FirstTpCell() As Range
-    ' Находит первую числовую ячейку в Elements!C начиная со 2-й строки
     Dim ws As Worksheet
     Set ws = ThisWorkbook.Worksheets("Elements")
 
@@ -268,33 +83,25 @@ Private Function FirstTpCell() As Range
         End If
     Next r
 
-    Err.Raise vbObjectError + 901, , "Не удалось найти числовую ячейку tp на листе Elements в колонке C"
+    Err.Raise vbObjectError + 901, , "Не удалось найти числовую ячейку tp в Elements!C"
 End Function
-
 
 Private Sub SetTpAndReinit(ByVal tp As Double)
     Dim c As Range
     Set c = FirstTpCell()
     c.Value = tp
 
-    ' Перезагружаем кэши и tp
     InitGlobals
     m_CallStack.RemoveAll
 End Sub
-
-
-Private Function ContainsLatexToken(ByVal s As String, ByVal token As String) As Boolean
-    ContainsLatexToken = (InStr(1, s, token, vbTextCompare) > 0)
-End Function
-
 
 Private Sub AssertTrue(ByVal cond As Boolean, ByVal msg As String)
     If Not cond Then Err.Raise vbObjectError + 910, , "ASSERT TRUE FAILED: " & msg
 End Sub
 
 Private Sub AssertNear(ByVal a As Double, ByVal b As Double, ByVal relTol As Double, ByVal msg As String)
-    ' относительная погрешность
     If a = 0 And b = 0 Then Exit Sub
+
     Dim denom As Double
     denom = IIf(Abs(b) > Abs(a), Abs(b), Abs(a))
     If denom = 0 Then Err.Raise vbObjectError + 911, , "ASSERT NEAR FAILED (both near 0?): " & msg
@@ -304,35 +111,148 @@ Private Sub AssertNear(ByVal a As Double, ByVal b As Double, ByVal relTol As Dou
     End If
 End Sub
 
+Private Function IsExternID(ByVal id As Long) As Boolean
+    On Error Resume Next
+    If m_ExternByID Is Nothing Then
+        IsExternID = False
+    Else
+        IsExternID = m_ExternByID.Exists(id)
+    End If
+    On Error GoTo 0
+End Function
+
+Private Function TermLambdaCount(ByVal t As CTerm) As Long
+    Dim idsV As Variant
+    idsV = t.FactorIDs
+    If IsEmpty(idsV) Then Exit Function
+
+    Dim c As Long, i As Long
+    c = 0
+    For i = LBound(idsV) To UBound(idsV)
+        If Not IsExternID(CLng(idsV(i))) Then c = c + 1
+    Next i
+    TermLambdaCount = c
+End Function
+
+Private Function ExprHasAnyLambda(ByVal e As CExpr) As Boolean
+    Dim terms() As CTerm
+    terms = e.GetTerms()
+    If (Not Not terms) = 0 Then Exit Function
+
+    Dim i As Long
+    For i = LBound(terms) To UBound(terms)
+        If TermLambdaCount(terms(i)) > 0 Then
+            ExprHasAnyLambda = True
+            Exit Function
+        End If
+    Next i
+End Function
+
+Private Function ExprAllTermsSameLambdaCount(ByVal e As CExpr, ByRef outCount As Long) As Boolean
+    Dim terms() As CTerm
+    terms = e.GetTerms()
+    If (Not Not terms) = 0 Then Exit Function
+
+    Dim i As Long
+    outCount = TermLambdaCount(terms(LBound(terms)))
+
+    For i = LBound(terms) To UBound(terms)
+        If TermLambdaCount(terms(i)) <> outCount Then
+            ExprAllTermsSameLambdaCount = False
+            Exit Function
+        End If
+    Next i
+
+    ExprAllTermsSameLambdaCount = True
+End Function
+
+' ---- NEW: detects tp token in symbolic latex under multiple possible spellings ----
+Private Function ContainsTpSymbolic(ByVal s As String) As Boolean
+    Dim norm As String
+    norm = Replace(s, " ", "")
+    
+    ' Accept:
+    '   t_p  (latin p)
+    '   t_п  (cyrillic pe)
+    ' plus a couple of fallback variants in case templates omit underscore
+    ContainsTpSymbolic = _
+        (InStr(1, norm, "t_p", vbTextCompare) > 0) Or _
+        (InStr(1, norm, "t_п", vbTextCompare) > 0) Or _
+        (InStr(1, norm, "tp", vbTextCompare) > 0) Or _
+        (InStr(1, norm, "tп", vbTextCompare) > 0)
+End Function
+
+' Find a function whose expression is exactly a single extern name (token only)
+Private Function FindSingleExternFunction(ByRef outFuncName As String, ByRef outExternName As String) As Boolean
+    If Not SheetExists("Functions") Then Exit Function
+    If Not SheetExists("ExternSystems") Then Exit Function
+
+    InitGlobals
+    If m_ExternByID Is Nothing Then Exit Function
+    If m_ExternByID.Count = 0 Then Exit Function
+
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Worksheets("Functions")
+
+    Dim lastRow As Long
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+
+    Dim r As Long
+    For r = 2 To lastRow
+        Dim fName As String
+        fName = Trim$(CStr(ws.Cells(r, 1).Value))
+        If Len(fName) = 0 Then GoTo NextRow
+
+        Dim expr As String
+        expr = Trim$(CStr(ws.Cells(r, 2).Value))
+        expr = Replace(expr, " ", "")
+        If Len(expr) = 0 Then GoTo NextRow
+
+        If Left$(expr, 1) = "(" And Right$(expr, 1) = ")" Then
+            expr = Mid$(expr, 2, Len(expr) - 2)
+        End If
+
+        If InStr(1, expr, "+", vbTextCompare) > 0 Then GoTo NextRow
+        If InStr(1, expr, "*", vbTextCompare) > 0 Then GoTo NextRow
+
+        Dim id As Long
+        id = GetID(expr)
+        If IsExternID(id) Then
+            outFuncName = fName
+            outExternName = expr
+            FindSingleExternFunction = True
+            Exit Function
+        End If
+
+NextRow:
+    Next r
+End Function
+
 
 '===========================
-' Tests
+' Updated Tests
 '===========================
 
-Public Sub Test_Tp_Affects_CalcFailure_By_Order()
+Public Sub Test_Tp_Affects_CalcFailure_By_LambdaCount()
     On Error GoTo EH
 
     Dim fName As String
     fName = FirstFunctionName()
 
-    ' Берём выражение и определяем порядок первого терма (r)
     InitGlobals
     Dim e As CExpr
     Set e = EvalFunction(fName)
+    If e Is Nothing Then Err.Raise vbObjectError + 920, , "EvalFunction returned Nothing for '" & fName & "'"
 
-    Dim terms() As CTerm
-    terms = e.GetTerms()
-    If (Not Not terms) = 0 Then Err.Raise vbObjectError + 920, , "Функция '" & fName & "' дала пустой набор термов"
+    Dim nLam As Long
+    If Not ExprAllTermsSameLambdaCount(e, nLam) Then
+        Debug.Print "SKIP: Test_Tp_Affects_CalcFailure_By_LambdaCount (function '" & fName & "' has mixed lambda-count terms)"
+        Exit Sub
+    End If
 
-    Dim r As Long
-    r = terms(LBound(terms)).Order
-    AssertTrue r > 0, "Order первого терма должен быть > 0"
-
-    ' Выбираем стадию 0, чтобы было проще/стабильнее
     Dim stage As Variant
     stage = 0
 
-    ' Считаем при двух tp
     Dim tp1 As Double, tp2 As Double
     tp1 = 0.5
     tp2 = 1#
@@ -345,23 +265,26 @@ Public Sub Test_Tp_Affects_CalcFailure_By_Order()
     Dim v2 As Double
     v2 = CalcFailure(fName, stage)
 
-    ' При неизменных ? и Wi отношение должно быть примерно (tp1/tp2)^r
+    If nLam = 0 Then
+        AssertNear v1, v2, 0.000001, "CalcFailure must not depend on tp when there are no lambdas (f=" & fName & ")"
+        Debug.Print "OK: CalcFailure does not depend on tp (no lambdas) for f=" & fName
+        Exit Sub
+    End If
+
     Dim expected As Double
-    expected = (tp1 / tp2) ^ r
+    expected = (tp1 / tp2) ^ nLam
 
-    ' v1 ~= v2 * expected
-    AssertNear v1, v2 * expected, 0.000001, "CalcFailure не масштабируется как tp^r (f=" & fName & ", r=" & r & ")"
-
-    Debug.Print "OK: CalcFailure scales by tp^r for f=" & fName & ", r=" & r
+    AssertNear v1, v2 * expected, 0.000001, "CalcFailure does not scale as tp^(#lambda) (f=" & fName & ", nLambda=" & nLam & ")"
+    Debug.Print "OK: CalcFailure scales by tp^(#lambda) for f=" & fName & ", nLambda=" & nLam
     Exit Sub
 
 EH:
-    Debug.Print "FAIL: Test_Tp_Affects_CalcFailure_By_Order: " & Err.Description
-    MsgBox "FAIL: Test_Tp_Affects_CalcFailure_By_Order" & vbCrLf & Err.Description, vbCritical
+    Debug.Print "FAIL: Test_Tp_Affects_CalcFailure_By_LambdaCount: " & Err.Description
+    MsgBox "FAIL: Test_Tp_Affects_CalcFailure_By_LambdaCount" & vbCrLf & Err.Description, vbCritical
 End Sub
 
 
-Public Sub Test_RewriteFailure_Includes_tp_power()
+Public Sub Test_RewriteFailure_Includes_tp_only_when_lambdas_exist()
     On Error GoTo EH
 
     Dim fName As String
@@ -369,25 +292,33 @@ Public Sub Test_RewriteFailure_Includes_tp_power()
 
     SetTpAndReinit 0.5
 
+    Dim e As CExpr
+    Set e = EvalFunction(fName)
+
+    Dim hasLam As Boolean
+    hasLam = ExprHasAnyLambda(e)
+
     Dim s As String
     s = RewriteFailure(fName, 0)
 
-    ' Строка должна быть валидным LaTeX и начинаться с Q_{name}
-    AssertTrue Left$(s, 3) = "Q_{", "RewriteFailure должен начинаться с 'Q_{'"
+    AssertTrue Left$(s, 3) = "Q_{", "RewriteFailure must start with 'Q_{'"
 
-    ' Должно быть упоминание t_p (либо t_p, либо t_p^{...})
-    AssertTrue ContainsLatexToken(s, "t_p"), "В RewriteFailure должен присутствовать t_p"
+    If hasLam Then
+        AssertTrue ContainsTpSymbolic(s), "RewriteFailure must contain t_p or t_п when lambdas exist"
+    Else
+        AssertTrue Not ContainsTpSymbolic(s), "RewriteFailure must NOT contain tp when no lambdas exist"
+    End If
 
-    Debug.Print "OK: RewriteFailure contains t_p for f=" & fName
+    Debug.Print "OK: RewriteFailure tp presence matches lambda presence for f=" & fName
     Exit Sub
 
 EH:
-    Debug.Print "FAIL: Test_RewriteFailure_Includes_tp_power: " & Err.Description
-    MsgBox "FAIL: Test_RewriteFailure_Includes_tp_power" & vbCrLf & Err.Description, vbCritical
+    Debug.Print "FAIL: Test_RewriteFailure_Includes_tp_only_when_lambdas_exist: " & Err.Description
+    MsgBox "FAIL: Test_RewriteFailure_Includes_tp_only_when_lambdas_exist" & vbCrLf & Err.Description, vbCritical
 End Sub
 
 
-Public Sub Test_SubstituteFailure_Includes_tp_numeric_power()
+Public Sub Test_SubstituteFailure_Includes_tp_numeric_only_when_lambdas_exist()
     On Error GoTo EH
 
     Dim fName As String
@@ -395,8 +326,13 @@ Public Sub Test_SubstituteFailure_Includes_tp_numeric_power()
 
     Dim tp As Double
     tp = 0.5
-
     SetTpAndReinit tp
+
+    Dim e As CExpr
+    Set e = EvalFunction(fName)
+
+    Dim hasLam As Boolean
+    hasLam = ExprHasAnyLambda(e)
 
     Dim s As String
     s = SubstituteFailure(fName, 0)
@@ -404,51 +340,120 @@ Public Sub Test_SubstituteFailure_Includes_tp_numeric_power()
     Debug.Print "SubstituteFailure output:"
     Debug.Print s
 
-    AssertTrue Left$(s, 3) = "Q_{", "SubstituteFailure должен начинаться с 'Q_{'"
+    AssertTrue Left$(s, 3) = "Q_{", "SubstituteFailure must start with 'Q_{'"
 
-    ' Нормализуем пробелы (шаблоны могут добавлять пробелы внутри степеней)
     Dim norm As String
     norm = Replace(s, " ", "")
 
-    ' Вариант 1: plain (0,5)
     Dim tpPlain As String
-    tpPlain = Format$(tp, "0.############") ' в RU-локали будет "0,5"
+    tpPlain = Format$(tp, "0.############")
     tpPlain = Replace(tpPlain, " ", "")
 
-    ' Вариант 2: scientific (5\cdot 10^{-1})
     Dim av As Double, exp As Long, mant As Double
     av = Abs(tp)
     exp = Fix(Log(av) / Log(10#))
     mant = tp / (10# ^ exp)
 
     Dim mantStr As String
-    mantStr = Format$(mant, "0.#####") ' для 0.5 будет "5"
+    mantStr = Format$(mant, "0.#####")
     mantStr = Replace(mantStr, " ", "")
 
     Dim tpSci As String
-    tpSci = mantStr & "\cdot10^{" & CStr(exp) & "}" ' без пробелов
-    ' В формуле может быть "\cdot 10^{...}" — убираем пробелы в norm, поэтому так ок
+    tpSci = mantStr & "\cdot10^{" & CStr(exp) & "}"
 
-    Dim ok As Boolean
-    ok = (InStr(1, norm, tpPlain, vbTextCompare) > 0) Or _
-         (InStr(1, norm, tpSci, vbTextCompare) > 0)
+    Dim containsTp As Boolean
+    containsTp = (InStr(1, norm, tpPlain, vbTextCompare) > 0) Or _
+                 (InStr(1, norm, tpSci, vbTextCompare) > 0)
 
-    AssertTrue ok, "В SubstituteFailure должно присутствовать tp либо в plain (" & tpPlain & "), либо в scientific (" & tpSci & ")"
+    If hasLam Then
+        AssertTrue containsTp, "SubstituteFailure must contain numeric tp when lambdas exist"
+    Else
+        AssertTrue Not containsTp, "SubstituteFailure must NOT contain numeric tp when no lambdas exist"
+    End If
 
-    Debug.Print "OK: SubstituteFailure contains numeric tp for f=" & fName
+    Debug.Print "OK: SubstituteFailure tp presence matches lambda presence for f=" & fName
     Exit Sub
 
 EH:
-    Debug.Print "FAIL: Test_SubstituteFailure_Includes_tp_numeric_power: " & Err.Description
-    MsgBox "FAIL: Test_SubstituteFailure_Includes_tp_numeric_power" & vbCrLf & Err.Description, vbCritical
+    Debug.Print "FAIL: Test_SubstituteFailure_Includes_tp_numeric_only_when_lambdas_exist: " & Err.Description
+    MsgBox "FAIL: Test_SubstituteFailure_Includes_tp_numeric_only_when_lambdas_exist" & vbCrLf & Err.Description, vbCritical
 End Sub
 
 
-Public Sub RunAll_Tp_Tests()
-    Debug.Print "=== RUN TP TESTS ==="
-    Test_Tp_Affects_CalcFailure_By_Order
-    Test_RewriteFailure_Includes_tp_power
-    Test_SubstituteFailure_Includes_tp_numeric_power
-    Debug.Print "=== DONE TP TESTS ==="
+Public Sub Test_SingleExternStageQ_DoesNotPrintWi_AndDoesNotUseTp()
+    On Error GoTo EH
+
+    Dim fName As String, extName As String
+    If Not FindSingleExternFunction(fName, extName) Then
+        Debug.Print "SKIP: Test_SingleExternStageQ_DoesNotPrintWi_AndDoesNotUseTp (no suitable single-extern function found)"
+        Exit Sub
+    End If
+
+    InitGlobals
+
+    Dim extID As Long
+    extID = GetID(extName)
+
+    If Not IsExternID(extID) Then
+        Debug.Print "SKIP: extern not loaded? (" & extName & ")"
+        Exit Sub
+    End If
+
+    Dim qi As Object
+    Set qi = m_ExternByID(extID)
+
+    If Not CBool(qi("HasStages")) Then
+        Debug.Print "SKIP: extern '" & extName & "' has no per-stage values"
+        Exit Sub
+    End If
+
+    Dim sSym As String
+    sSym = RewriteFailure(fName, 0)
+
+    AssertTrue Not ContainsTpSymbolic(sSym), "Single stage-Q term must not contain tp"
+    AssertTrue InStr(1, sSym, "W_{", vbTextCompare) = 0, "Single stage-Q term must not contain Wi"
+
+    Dim sNum As String
+    sNum = SubstituteFailure(fName, 0)
+    AssertTrue Not ContainsTpSymbolic(sNum), "Single stage-Q numeric must not contain tp"
+
+    Debug.Print "OK: Single per-stage extern Q skips Wi and tp for function '" & fName & "' (extern '" & extName & "')"
+    Exit Sub
+
+EH:
+    Debug.Print "FAIL: Test_SingleExternStageQ_DoesNotPrintWi_AndDoesNotUseTp: " & Err.Description
+    MsgBox "FAIL: Test_SingleExternStageQ_DoesNotPrintWi_AndDoesNotUseTp" & vbCrLf & Err.Description, vbCritical
 End Sub
+
+
+Public Sub RunAll_Core_Tests()
+    Debug.Print "=== RUN CORE TESTS ==="
+    Test_Tp_Affects_CalcFailure_By_LambdaCount
+    
+    Dim tpl As Object: Set tpl = LoadFormatTemplates()
+
+Debug.Print "SYM_Q_TEMPLATE = "; GetTplWarn(tpl, "SYM_Q_TEMPLATE", "<missing>")
+Debug.Print "TP_SYM_POW     = "; GetTplWarn(tpl, "TP_SYM_POW", "<missing>")
+Debug.Print "SYM_MULT_TEMPLATE = "; GetTplWarn(tpl, "SYM_MULT_TEMPLATE", "<missing>")
+Debug.Print "SYM_TERM_TEMPLATE = "; GetTplWarn(tpl, "SYM_TERM_TEMPLATE", "<missing>")
+    
+    Test_RewriteFailure_Includes_tp_only_when_lambdas_exist
+    Test_SubstituteFailure_Includes_tp_numeric_only_when_lambdas_exist
+    Test_SingleExternStageQ_DoesNotPrintWi_AndDoesNotUseTp
+    Debug.Print "=== DONE CORE TESTS ==="
+End Sub
+
+
+Public Sub MinTest_ApplyTokens()
+    Debug.Print "--- MinTest_ApplyTokens ---"
+    Dim tpl As String
+    tpl = "A=[[A]]; B=[[B]]; C={{latex}}"
+    Dim out As String
+    out = ApplyTokens(tpl, Array("A", "B"), Array("1", "2"))
+    Debug.Print out
+    If out <> "A=1; B=2; C={{latex}}" Then
+        Err.Raise vbObjectError + 9101, "MinTest", "ApplyTokens работает не так, как ожидается: " & out
+    End If
+End Sub
+
 
