@@ -12,6 +12,8 @@ Public m_CallStack As Object
 
 Public m_WiValues() As Double   ' (r, stage)
 Public m_Tp As Double
+Public m_NameKind As Object  ' name -> "ELEM" | "FUNC" | "Q"
+
 
 ' ====== External (precalculated) subsystem Q data ======
 ' Keyed by subsystem ID (Long) -> Dictionary with fields:
@@ -61,6 +63,7 @@ Public Sub InitGlobals()
     Set m_FuncDNFCache = CreateObject("Scripting.Dictionary")
     Set m_CallStack = CreateObject("Scripting.Dictionary")
     Set m_ExternByID = CreateObject("Scripting.Dictionary")
+    Set m_NameKind = CreateObject("Scripting.Dictionary")
 
     ReDim m_IDToName(0)
     ReDim m_LambdaValues(0)
@@ -70,6 +73,20 @@ Public Sub InitGlobals()
     LoadWi
     LoadTp
     LoadExternSystems
+End Sub
+
+Private Sub RegisterName(ByVal nm As String, ByVal kind As String, ByVal where As String)
+    nm = Trim$(nm)
+    If Len(nm) = 0 Then Exit Sub
+
+    If m_NameKind.Exists(nm) Then
+        Dim prev As String: prev = CStr(m_NameKind(nm))
+        Err.Raise vbObjectError + 3201, "InitGlobals", _
+            "Конфликт имён: '" & nm & "' уже занято (" & prev & "), нельзя зарегистрировать как " & kind & _
+            ". Источник: " & where
+    End If
+
+    m_NameKind.Add nm, kind
 End Sub
 
 '=========================================================
@@ -115,11 +132,20 @@ Private Sub LoadLambdas()
     For i = 1 To UBound(data, 1)
         sName = Trim$(CStr(data(i, RANGE_ELEMENTS_COL_NAME)))
         If sName <> "" Then
+            ' 1) запрет дублей элементов
+            If m_NameKind.Exists(sName) Then
+                Err.Raise vbObjectError + 3202, "LoadLambdas", "Дублируется элемент '" & sName & "' на листе " & SHEET_ELEMENTS
+            End If
+
+            ' 2) регистрируем как элемент
+            Call RegisterName(sName, "ELEM", SHEET_ELEMENTS & "!" & "A" & (i + 1))
+
+            ' 3) теперь можно создавать ID
             id = GetID(sName)
             If id > UBound(m_LambdaValues) Then ReDim Preserve m_LambdaValues(0 To id + 50)
             m_LambdaValues(id) = ParseDouble(CStr(data(i, RANGE_ELEMENTS_COL_LAMBDA)), sName)
         End If
-    Next i
+Next i
 End Sub
 
 '=========================================================
@@ -138,6 +164,13 @@ Private Sub LoadFunctions()
     For i = 1 To UBound(data, 1)
         fName = Trim$(CStr(data(i, RANGE_FUNCTIONS_COL_NAME)))
         If fName <> "" Then
+            ' нельзя совпадать с элементом
+            If m_NameKind.Exists(fName) Then
+                Err.Raise vbObjectError + 3203, "LoadFunctions", _
+                "Имя функции '" & fName & "' конфликтует с ранее загруженным именем (" & m_NameKind(fName) & "). Лист: " & SHEET_FUNCTIONS
+            End If
+
+            Call RegisterName(fName, "FUNC", SHEET_FUNCTIONS & "!" & "A" & (i + 1))
             m_FuncExprCache(fName) = Trim$(CStr(data(i, RANGE_FUNCTIONS_COL_EXPR)))
         End If
     Next i
@@ -223,6 +256,13 @@ Private Sub LoadExternSystems()
 
         qInfo("Name") = nm
         qInfo("Order") = ord
+
+        If m_NameKind.Exists(nm) Then
+            Err.Raise vbObjectError + 3204, "LoadExternSystems", _
+            "Имя внешней Q '" & nm & "' конфликтует с ранее загруженным именем (" & m_NameKind(nm) & "). Лист: " & SHEET_EXTERN & " строка " & r
+        End If
+
+        Call RegisterName(nm, "Q", SHEET_EXTERN & "!" & "A" & r)
 
         Dim id As Long
         id = GetID(nm)
@@ -327,6 +367,25 @@ Public Function GetID(ByVal sName As String) As Long
     Else
         GetID = m_NameToID(sName)
     End If
+End Function
+
+
+Public Function GetIDStrict(ByVal sName As String, Optional ByVal ctx As String = "") As Long
+    sName = Trim$(sName)
+    If Len(sName) = 0 Then
+        Err.Raise vbObjectError + 1001, "Parser", "Пустое имя атома. " & ctx
+    End If
+
+    If m_NameKind Is Nothing Then
+        Err.Raise vbObjectError + 3999, "Resolver", "m_NameKind не инициализирован. " & ctx
+    End If
+
+    If Not m_NameKind.Exists(sName) Then
+        Err.Raise vbObjectError + 3002, "Resolver", "Неизвестное имя в формуле: '" & sName & "'. " & ctx
+    End If
+
+    ' Теперь безопасно: имя гарантированно "из таблиц", GetID не создаст мусор (оно уже будет в m_NameToID)
+    GetIDStrict = GetID(sName)
 End Function
 
 
