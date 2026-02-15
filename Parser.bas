@@ -2,7 +2,7 @@ Attribute VB_Name = "Parser"
 Option Explicit
 
 '==============================
-' Модуль: Parser + EvalFunction
+' Модуль: Parser + EvalFunction (DEBUG VERSION)
 '==============================
 
 ' Символы
@@ -12,18 +12,19 @@ Private Const CH_PLUS As String = "+"
 Private Const CH_MULT As String = "*"
 
 ' Коды ошибок
-
 Private Const ERR_SYNTAX As Long = vbObjectError + 1001
 Private Const ERR_FUNC_NOT_FOUND As Long = vbObjectError + 3001
 Private Const ERR_NAME_NOT_FOUND As Long = vbObjectError + 3002
 Private Const ERR_Q_NOT_FOUND As Long = vbObjectError + 3003
 Private Const ERR_CYCLE As Long = vbObjectError + 3004
 
+' DEBUG: Глобальная переменная для трассировки
+Public g_DebugTrace As Boolean
+
 '=========================================================
 ' Вычисление функции с учётом кэша и рекурсивных вызовов
 '=========================================================
 
-' --- Конвертирует строковое выражение функции в CExpr ---
 Public Function EvalFunction(ByVal fName As String) As CExpr
     If Not m_FuncExprCache.Exists(fName) Then Err.Raise ERR_FUNC_NOT_FOUND, "EvalFunction", "Не найдена функция: " & fName
     If m_FuncDNFCache.Exists(fName) Then Set EvalFunction = m_FuncDNFCache(fName): Exit Function
@@ -34,32 +35,33 @@ Public Function EvalFunction(ByVal fName As String) As CExpr
 
     On Error GoTo EH
     Dim res As CExpr
-    Set res = ParseOr(sExpr, fName) ' <-- добавим контекст fName
+    Set res = ParseOr(sExpr, fName)
     Set m_FuncDNFCache(fName) = res
     m_CallStack.Remove fName
     Set EvalFunction = res
     Exit Function
 
 EH:
-    ' Добавляем контекст функции к сообщению
     Dim msg As String
     msg = "Функция: " & fName & vbCrLf & Err.Description
     m_CallStack.Remove fName
-    Err.Raise Err.Number, Err.source, msg
+    Err.Raise Err.Number, Err.Source, msg
 End Function
-
-
 
 '==============================
 ' Парсер OR выражения
 '==============================
 
-
-' --- Парсинг выражения с OR (+) ---
 Public Function ParseOr(ByVal s As String, ByVal ctxName As String) As CExpr
+    If g_DebugTrace Then Debug.Print "ParseOr: """ & s & """ (ctx: " & ctxName & ")"
+    
     Dim res As New CExpr, parts As Collection, p As Variant
     Set parts = SplitTop(s, "+", ctxName)
+    
+    If g_DebugTrace Then Debug.Print "  SplitTop(+) вернул " & parts.Count & " частей"
+    
     For Each p In parts
+        If g_DebugTrace Then Debug.Print "    Часть: """ & CStr(p) & """"
         Set res = OrExpr(res, ParseAnd(CStr(p), ctxName))
     Next p
     Set ParseOr = res
@@ -69,12 +71,17 @@ End Function
 ' Парсер AND выражения
 '==============================
 
-' --- Парсинг AND (*) ---
 Public Function ParseAnd(ByVal s As String, ByVal ctxName As String) As CExpr
+    If g_DebugTrace Then Debug.Print "ParseAnd: """ & s & """ (ctx: " & ctxName & ")"
+    
     Dim res As New CExpr, parts As Collection, p As Variant
     Set parts = SplitTop(s, "*", ctxName)
+    
+    If g_DebugTrace Then Debug.Print "  SplitTop(*) вернул " & parts.Count & " частей"
+    
     Dim first As Boolean: first = True
     For Each p In parts
+        If g_DebugTrace Then Debug.Print "    Часть: """ & CStr(p) & """"
         If first Then
             Set res = ParseFactor(CStr(p), ctxName)
             first = False
@@ -85,47 +92,54 @@ Public Function ParseAnd(ByVal s As String, ByVal ctxName As String) As CExpr
     Set ParseAnd = res
 End Function
 
-
-
 '==============================
 ' Парсер фактора (атом или скобки)
 '==============================
 
 Public Function ParseFactor(ByVal s As String, ByVal ctxName As String) As CExpr
+    If g_DebugTrace Then Debug.Print "ParseFactor: """ & s & """ (ctx: " & ctxName & ")"
+    
     If Len(s) = 0 Then
         Err.Raise ERR_SYNTAX, "Parser", "Пустой фактор в выражении." & vbCrLf & "Функция: " & ctxName
     End If
 
     If Left$(s, 1) = "(" Then
-        ' Если начинается со скобки — проверим, что это действительно outer-parens
+        ' Проверяем outer-parens
         If Not IsOuterParens(s) Then
             Err.Raise ERR_SYNTAX, "Parser", "Некорректные скобки в факторе: " & s & vbCrLf & "Функция: " & ctxName
         End If
+        
+        If g_DebugTrace Then Debug.Print "  Outer parens detected, recursing into ParseOr"
         Set ParseFactor = ParseOr(Mid$(s, 2, Len(s) - 2), ctxName)
         Exit Function
     End If
 
+    ' ИСПРАВЛЕНИЕ: Проверка на лишние скобки должна быть ПОСЛЕ проверки outer-parens
+    ' Иначе выражения вида "name(" или "name)" будут ошибочно отклонены
     If InStr(1, s, "(", vbBinaryCompare) > 0 Or InStr(1, s, ")", vbBinaryCompare) > 0 Then
         Err.Raise ERR_SYNTAX, "Parser", "Лишняя скобка в атоме: " & s & vbCrLf & "Функция: " & ctxName
     End If
 
     ' Вызов функции
     If m_FuncExprCache.Exists(s) Then
+        If g_DebugTrace Then Debug.Print "  Detected function reference: " & s
         Set ParseFactor = EvalFunction(s)
         Exit Function
     End If
 
     ' Атом
+    If g_DebugTrace Then Debug.Print "  Creating atom: " & s
     Set ParseFactor = CreateAtomStrict(s, ctxName)
 End Function
 
-
-
 ' --- Разделение строки по верхнему уровню скобок ---
 Public Function SplitTop(ByVal s As String, ByVal sep As String, ByVal ctxName As String) As Collection
+    If g_DebugTrace Then Debug.Print "SplitTop: """ & s & """, sep='" & sep & "'"
+    
     Dim res As New Collection
     Dim lvl As Long, i As Long, p As Long
     p = 1
+    lvl = 0  ' ИСПРАВЛЕНИЕ: явная инициализация
 
     If Len(s) = 0 Then
         Err.Raise ERR_SYNTAX, "Parser", "Пустое выражение." & vbCrLf & "Функция: " & ctxName
@@ -133,6 +147,11 @@ Public Function SplitTop(ByVal s As String, ByVal sep As String, ByVal ctxName A
 
     For i = 1 To Len(s)
         Dim ch As String: ch = Mid$(s, i, 1)
+        
+        If g_DebugTrace And (ch = "(" Or ch = ")" Or ch = sep) Then
+            Debug.Print "  i=" & i & ", ch='" & ch & "', lvl=" & lvl & ", p=" & p
+        End If
+        
         Select Case ch
             Case "("
                 lvl = lvl + 1
@@ -146,6 +165,9 @@ Public Function SplitTop(ByVal s As String, ByVal sep As String, ByVal ctxName A
                 If lvl = 0 Then
                     Dim part As String
                     part = Mid$(s, p, i - p)
+                    
+                    If g_DebugTrace Then Debug.Print "  Найден разделитель на lvl=0, извлекаем часть: """ & part & """"
+                    
                     If Len(part) = 0 Then
                         Err.Raise ERR_SYNTAX, "Parser", _
                             "Оператор '" & sep & "' без операнда (позиция " & i & ")." & vbCrLf & MarkPos(s, i) & vbCrLf & "Функция: " & ctxName
@@ -158,17 +180,22 @@ Public Function SplitTop(ByVal s As String, ByVal sep As String, ByVal ctxName A
 
     If lvl <> 0 Then
         Err.Raise ERR_SYNTAX, "Parser", _
-            "Не закрыта скобка ) в выражении." & vbCrLf & MarkPos(s, Len(s)) & vbCrLf & "Функция: " & ctxName
+            "Не закрыта скобка ) в выражении (lvl=" & lvl & ")." & vbCrLf & MarkPos(s, Len(s)) & vbCrLf & "Функция: " & ctxName
     End If
 
     Dim lastPart As String
     lastPart = Mid$(s, p)
+    
+    If g_DebugTrace Then Debug.Print "  Последняя часть (p=" & p & "): """ & lastPart & """"
+    
     If Len(lastPart) = 0 Then
         Err.Raise ERR_SYNTAX, "Parser", _
             "Оператор '" & sep & "' в конце выражения." & vbCrLf & MarkPos(s, Len(s)) & vbCrLf & "Функция: " & ctxName
     End If
     res.Add lastPart
 
+    If g_DebugTrace Then Debug.Print "  SplitTop результат: " & res.Count & " частей"
+    
     Set SplitTop = res
 End Function
 
@@ -189,13 +216,10 @@ Private Function IsOuterParens(ByVal s As String) As Boolean
     IsOuterParens = (lvl = 0)
 End Function
 
-
 '==============================
 ' Создание атома (CExpr с одним CTerm)
 '==============================
 
-
-' --- Создание атома ---
 Public Function CreateAtomStrict(ByVal sName As String, Optional ByVal ctx As String = "") As CExpr
     Dim nm As String
     nm = Trim$(sName)
@@ -236,25 +260,8 @@ Public Function CreateAtomStrict(ByVal sName As String, Optional ByVal ctx As St
     Set CreateAtomStrict = res
 End Function
 
-
-
-
-'==============================
-' Объединение выражений (OR)
-'==============================
-Private Sub MergeExpr(ByRef target As CExpr, ByVal source As CExpr)
-    Dim t() As CTerm
-    t = source.GetTerms()
-    If (Not Not t) = 0 Then Exit Sub
-    Dim i As Long
-    For i = LBound(t) To UBound(t)
-        target.AddTerm t(i)
-    Next i
-End Sub
-
 Private Function MarkPos(ByVal s As String, ByVal pos As Long) As String
     If pos < 1 Then pos = 1
     If pos > Len(s) Then pos = Len(s)
     MarkPos = s & vbCrLf & Space$(pos - 1) & "^"
 End Function
-

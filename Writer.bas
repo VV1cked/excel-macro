@@ -1,5 +1,6 @@
 Attribute VB_Name = "Writer"
 Option Explicit
+
 Private m_Warnings As Collection
 Public Function RewriteFailure(ByVal fName As String, ByVal stage As Variant) As String
     InitGlobals
@@ -53,80 +54,6 @@ Private Function RenderExprSymbolicLatex(ByVal expr As CExpr, ByVal stage As Var
     RenderExprSymbolicLatex = out
 End Function
 
-Private Function RenderOneCTermSymbolicLatex(ByVal t As CTerm, ByVal stage As Variant, ByVal tpl As Object) As String
-    If Abs(t.Multiplier) < 0.0000000001 Then
-        RenderOneCTermSymbolicLatex = ""
-        Exit Function
-    End If
-
-    Dim termTpl As String: termTpl = GetTplWarn(tpl, "SYM_TERM_TEMPLATE", "{MULT}{WI}{WI_MUL}{LAMQPROD}{TP}")
-    Dim multTpl As String: multTpl = GetTplWarn(tpl, "SYM_MULT_TEMPLATE", "{mult}\,")
-    Dim wiTpl As String: wiTpl = GetTplWarn(tpl, "SYM_WI_TEMPLATE", "W_{ {r} }^{({stage})}\,")
-    Dim lamTpl As String: lamTpl = GetTplWarn(tpl, "SYM_LAM_TEMPLATE", "\lambda_{\text{{name}}}")
-    Dim lamJoin As String: lamJoin = GetTplWarn(tpl, "SYM_LAM_JOIN", "\cdot ")
-    Dim qTpl As String: qTpl = GetTplWarn(tpl, "SYM_Q_TEMPLATE", "Q_{ \text{{name}} }")
-    Dim qJoin As String: qJoin = GetTplWarn(tpl, "SYM_Q_JOIN", "\cdot ")
-    Dim factorJoin As String: factorJoin = GetTplWarn(tpl, "SYM_FACTOR_JOIN", "\cdot ")
-
-    Dim multStr As String: multStr = ""
-    If Abs(t.Multiplier - 1#) > 0.0000000001 Then
-        multStr = ApplyTokens(multTpl, Array("mult"), Array(TrimNumberSymbolic(t.Multiplier)))
-    End If
-
-    ' IMPORTANT: FactorIDs -> Variant
-    Dim idsV As Variant
-    idsV = t.FactorIDs
-    If IsEmpty(idsV) Then
-        RenderOneCTermSymbolicLatex = ""
-        Exit Function
-    End If
-
-    Dim isAll As Boolean: isAll = IsStageAll(stage)
-    Dim st As Long: If Not isAll Then st = CLng(stage)
-
-    Dim lamIDs() As Long, lamCount As Long
-    Dim qIDs() As Long, qCount As Long
-    SplitIDs_ByExtern idsV, lamIDs, lamCount, qIDs, qCount
-
-    Dim rTerm As Long
-    rTerm = ComputeRTerm(lamCount, qIDs, qCount)
-
-    Dim skipWi As Boolean
-    skipWi = ShouldSkipWi(lamCount, qIDs, qCount, stage)
-    
-    Dim stText As String
-    stText = StageToText(stage)
-
-    Dim wiStr As String: wiStr = ""
-    If (Not isAll) And (Not skipWi) Then
-        Dim wiVal As Double
-        wiVal = GetWiValueSafe(rTerm, st)
-        If Abs(wiVal - 1#) > 0.0000000001 Then
-
-            wiStr = ApplyTokens(wiTpl, Array("r", "stage"), Array(CStr(rTerm), stText))
-            'wiStr = ApplyTokens(wiTpl, Array("r", "stage"), Array(CStr(rTerm), CStr(stage)))
-        End If
-    End If
-
-    Dim wiMulStr As String
-    If Len(wiStr) > 0 Then wiMulStr = GetTplWarn(tpl, "SYM_WI_MUL", "\,\cdot\,") Else wiMulStr = ""
-
-    Dim lamProd As String
-    lamProd = RenderLambdaProductByIDs(lamIDs, lamCount, lamTpl, lamJoin)
-
-    Dim qProd As String
-    qProd = RenderQProductByIDs(qIDs, qCount, stText, qTpl, qJoin)
-
-    Dim lamQProd As String
-    lamQProd = JoinNonEmpty(Array(lamProd, qProd), factorJoin)
-
-    Dim tpStr As String
-    tpStr = RenderTpSymbolic(lamCount, tpl)
-
-    RenderOneCTermSymbolicLatex = ApplyTokens(termTpl, _
-        Array("MULT", "WI", "WI_MUL", "LAMQPROD", "TP"), _
-        Array(multStr, wiStr, wiMulStr, lamQProd, tpStr))
-End Function
 
 '===========================
 ' Numeric rendering
@@ -158,67 +85,7 @@ Private Function RenderExprNumericLatex(ByVal expr As CExpr, ByVal stage As Vari
     RenderExprNumericLatex = out
 End Function
 
-Private Function RenderOneCTermNumericLatex(ByVal t As CTerm, ByVal stage As Variant, ByVal tpl As Object) As String
-    If Abs(t.Multiplier) < 0.0000000001 Then
-        RenderOneCTermNumericLatex = ""
-        Exit Function
-    End If
 
-    Dim factorJoin As String: factorJoin = GetTplWarn(tpl, "NUM_FACTOR_JOIN", "\,\cdot\,")
-    Dim termTpl As String: termTpl = GetTplWarn(tpl, "NUM_TERM_TEMPLATE", "{FACTORS}{TP}")
-
-    Dim factors As Collection: Set factors = New Collection
-
-    Dim isAll As Boolean: isAll = IsStageAll(stage)
-    Dim st As Long: If Not isAll Then st = CLng(stage)
-
-    If Abs(t.Multiplier - 1#) > 0.0000000001 Then
-        factors.Add FormatNumLatex(t.Multiplier, tpl)
-    End If
-
-    ' IMPORTANT: FactorIDs -> Variant
-    Dim idsV As Variant
-    idsV = t.FactorIDs
-    If IsEmpty(idsV) Then
-        RenderOneCTermNumericLatex = ""
-        Exit Function
-    End If
-
-    Dim lamIDs() As Long, lamCount As Long
-    Dim qIDs() As Long, qCount As Long
-    SplitIDs_ByExtern idsV, lamIDs, lamCount, qIDs, qCount
-
-    Dim rTerm As Long
-    rTerm = ComputeRTerm(lamCount, qIDs, qCount)
-
-    Dim skipWi As Boolean
-    skipWi = ShouldSkipWi(lamCount, qIDs, qCount, stage)
-
-    If (Not isAll) And (Not skipWi) Then
-        Dim wiVal As Double
-        wiVal = GetWiValueSafe(rTerm, st)
-        If Abs(wiVal - 1#) > 0.0000000001 Then
-            factors.Add FormatNumLatex(wiVal, tpl)
-        End If
-    End If
-
-    Dim i As Long
-    For i = 0 To lamCount - 1
-        factors.Add FormatNumLatex(m_LambdaValues(lamIDs(i)), tpl)
-    Next i
-
-    If qCount > 0 Then
-        factors.Add FormatNumLatex(EvalQTermNumeric(lamCount, qIDs, qCount, stage), tpl)
-    End If
-
-    Dim factorsStr As String
-    factorsStr = JoinCollection(factors, factorJoin)
-
-    Dim tpStr As String
-    tpStr = RenderTpNumeric(lamCount, tpl)
-
-    RenderOneCTermNumericLatex = ApplyTokens(termTpl, Array("FACTORS", "TP"), Array(factorsStr, tpStr))
-End Function
 
 '===========================
 ' Split + helpers
@@ -271,7 +138,7 @@ Private Function ShouldSkipWi(ByVal lamCount As Long, ByRef qIDs() As Long, ByVa
         Exit Function
     End If
 
-    ' Исключение: терм = одна Q без ?, и она задана по этапам
+    ' ??????????: ???? = ???? Q ??? ?, ? ??? ?????? ?? ??????
     If lamCount = 0 And qCount = 1 Then
         Dim id As Long: id = qIDs(0)
         Dim qi As Object: Set qi = m_ExternByID(id)
@@ -286,7 +153,7 @@ End Function
 
 Private Function GetWiValueSafe(ByVal r As Long, ByVal st As Long) As Double
     Dim maxR As Long: maxR = UBound(m_WiValues, 1)
-    If r < 0 Or r > maxR Then Err.Raise vbObjectError + 880, "Writer", "Wi: r вне диапазона: " & r
+    If r < 0 Or r > maxR Then Err.Raise vbObjectError + 880, "Writer", "Wi: r ??? ?????????: " & r
     GetWiValueSafe = m_WiValues(r, st)
 End Function
 
@@ -349,7 +216,7 @@ Private Function RenderQProductByIDs(ByRef ids() As Long, ByVal cnt As Long, ByV
         Dim nm As String: nm = GetElementNameByID(ids(i))
 
         Dim basis As String
-        basis = "t_{п}" ' по умолчанию "за всё время"
+        basis = "t_{?}" ' ?? ????????? "?? ??? ?????"
 
         If Not IsStageAll(stage) Then
             If Not m_ExternByID Is Nothing And m_ExternByID.Exists(ids(i)) Then
@@ -373,7 +240,7 @@ Private Function RenderQProductByIDs(ByRef ids() As Long, ByVal cnt As Long, ByV
 End Function
 
 '===========================
-' Templates + utils (оставил компактно)
+' Templates + utils (??????? ?????????)
 '===========================
 
 Public Function LoadFormatTemplates() As Object
@@ -405,8 +272,8 @@ Public Function LoadFormatTemplates() As Object
     d("NUM_MANTISSA_FMT") = "0.#####"
     d("NUM_SCI_TEMPLATE") = "[[mant]]\cdot 10^{[[exp]]}"
     
-    d("TP_SYM_1") = "\,t_{п}"
-    d("TP_SYM_POW") = "\,t_{п}^{ [[r]] }"
+    d("TP_SYM_1") = "\,t_{?}"
+    d("TP_SYM_POW") = "\,t_{?}^{ [[r]] }"
     d("TP_NUM_1") = "\,\cdot\,[[tp]]"
     d("TP_NUM_POW") = "\,\cdot\,([[tp]])^{ [[r]] }"
 
@@ -417,8 +284,8 @@ Public Function LoadFormatTemplates() As Object
         Dim lastRow As Long: lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
         Dim r As Long
         For r = 1 To lastRow
-            Dim k As String: k = Trim$(CStr(ws.Cells(r, 1).Value))
-            Dim v As String: v = CStr(ws.Cells(r, 2).Value)
+            Dim k As String: k = Trim$(CStr(ws.Cells(r, 1).value))
+            Dim v As String: v = CStr(ws.Cells(r, 2).value)
             If Len(k) > 0 Then d(k) = v
         Next r
     End If
@@ -434,8 +301,8 @@ Public Function GetTplWarn(ByVal tpl As Object, ByVal key As String, ByVal defau
         End If
     End If
 
-    ' предупреждение и продолжение
-    Call DiagWarn(2001, "Не найден шаблон '" & key & "' на листе Format. Использую дефолт: " & defaultValue)
+    ' ?????????????? ? ???????????
+    Call DiagWarn(2001, "?? ?????? ?????? '" & key & "' ?? ????? Format. ????????? ??????: " & defaultValue)
 
     GetTplWarn = defaultValue
 End Function
@@ -518,29 +385,30 @@ Private Function FormatNumLatex(ByVal v As Double, ByVal tpl As Object) As Strin
         Exit Function
     End If
 
-    ' У тебя всегда положительные числа, но на всякий случай нормализуем
+    ' ? ???? ?????? ????????????? ?????, ?? ?? ?????? ?????? ???????????
     Dim av As Double
     av = Abs(v)
 
-    ' Обычный (не научный) формат
+    ' ??????? (?? ???????) ??????
     If av >= plainMin And av < plainMax Then
         Dim s As String
         s = Format$(av, GetTplWarn(tpl, "NUM_PLAIN_FMT", "0.############"))
-        ' VBA может вернуть запятую как десятичный разделитель
+        ' VBA ????? ??????? ??????? ??? ?????????? ???????????
         s = Replace(s, ",", ".")
         If Right$(s, 1) = "." Then s = Left$(s, Len(s) - 1)
+        s = Replace(s, ".", ",")
         FormatNumLatex = s
         Exit Function
     End If
 
-    ' Научный формат: мантисса нормируется в диапазон 1 <= mant < 10
+    ' ??????? ??????: ???????? ??????????? ? ???????? 1 <= mant < 10
     Dim exp As Long
-    exp = Int(Log(av) / Log(10#))   ' важно: Int (floor), а не Fix
+    exp = Int(Log(av) / Log(10#))   ' ?????: Int (floor), ? ?? Fix
 
     Dim mant As Double
     mant = av / (10# ^ exp)
 
-    ' Доводим до диапазона [1, 10) по модулю (на случай пограничных эффектов)
+    ' ??????? ?? ????????? [1, 10) ?? ?????? (?? ?????? ??????????? ????????)
     If mant >= 10# Then
         mant = mant / 10#
         exp = exp + 1
@@ -553,9 +421,10 @@ Private Function FormatNumLatex(ByVal v As Double, ByVal tpl As Object) As Strin
     mantStr = Format$(mant, GetTplWarn(tpl, "NUM_MANTISSA_FMT", "0.#####"))
     mantStr = Replace(mantStr, ",", ".")
     If Right$(mantStr, 1) = "." Then mantStr = Left$(mantStr, Len(mantStr) - 1)
+    mantStr = Replace(mantStr, ".", ",")
 
-    ' Шаблон научной записи
-    ' Пример: [[mant]]\cdot 10^{[[exp]]} (или твой старый с {mant}/{exp})
+    ' ?????? ??????? ??????
+    ' ??????: [[mant]]\cdot 10^{[[exp]]} (??? ???? ?????? ? {mant}/{exp})
     FormatNumLatex = ApplyTokens( _
         GetTplWarn(tpl, "NUM_SCI_TEMPLATE", "{mant}\cdot 10^{ {exp} }"), _
         Array("mant", "exp"), _
@@ -584,7 +453,7 @@ Private Function JoinNonEmpty(ByVal parts As Variant, ByVal delim As String) As 
     JoinNonEmpty = out
 End Function
 
-' сортировка оставь свою текущую (как у тебя в Writer), не дублирую здесь
+' ?????????? ?????? ???? ??????? (??? ? ???? ? Writer), ?? ???????? ?????
 Private Sub QuickSortCTermArray(ByRef arr() As CTerm, ByVal first As Long, ByVal last As Long)
     Dim i As Long, j As Long
     i = first: j = last
@@ -648,3 +517,482 @@ Private Function WarningsToText() As String
     WarningsToText = s
 End Function
 
+
+' ================================
+' Патч для Writer.bas - поддержка компактных термов
+' ================================
+' Замените функции RenderOneCTermSymbolicLatex и RenderOneCTermNumericLatex
+
+Private Function RenderOneCTermSymbolicLatex(ByVal t As CTerm, ByVal stage As Variant, ByVal tpl As Object) As String
+    If Abs(t.Multiplier) < 0.0000000001 Then
+        RenderOneCTermSymbolicLatex = ""
+        Exit Function
+    End If
+
+    ' ===== ОБРАБОТКА КОМПАКТНЫХ ТЕРМОВ =====
+    If t.TermType = 1 Then  ' ttCompact
+        RenderOneCTermSymbolicLatex = RenderCompactTermSymbolic(t, stage, tpl)
+        Exit Function
+    End If
+    
+    ' ===== ОБРАБОТКА КЕШИРОВАННЫХ ФУНКЦИЙ =====
+    If t.TermType = 2 Then  ' ttCachedFunc
+        RenderOneCTermSymbolicLatex = RenderCachedFuncSymbolic(t, stage, tpl)
+        Exit Function
+    End If
+
+    ' ===== ОБЫЧНАЯ ОБРАБОТКА =====
+    Dim termTpl As String: termTpl = GetTplWarn(tpl, "SYM_TERM_TEMPLATE", "{MULT}{WI}{WI_MUL}{LAMQPROD}{TP}")
+    Dim multTpl As String: multTpl = GetTplWarn(tpl, "SYM_MULT_TEMPLATE", "{mult}\,")
+    Dim wiTpl As String: wiTpl = GetTplWarn(tpl, "SYM_WI_TEMPLATE", "W_{ {r} }^{({stage})}\,")
+    Dim lamTpl As String: lamTpl = GetTplWarn(tpl, "SYM_LAM_TEMPLATE", "\lambda_{\text{{name}}}")
+    Dim lamJoin As String: lamJoin = GetTplWarn(tpl, "SYM_LAM_JOIN", "\cdot ")
+    Dim qTpl As String: qTpl = GetTplWarn(tpl, "SYM_Q_TEMPLATE", "Q_{ \text{{name}} }")
+    Dim qJoin As String: qJoin = GetTplWarn(tpl, "SYM_Q_JOIN", "\cdot ")
+    Dim factorJoin As String: factorJoin = GetTplWarn(tpl, "SYM_FACTOR_JOIN", "\cdot ")
+
+    Dim multStr As String: multStr = ""
+    If Abs(t.Multiplier - 1#) > 0.0000000001 Then
+        multStr = ApplyTokens(multTpl, Array("mult"), Array(TrimNumberSymbolic(t.Multiplier)))
+    End If
+
+    Dim idsV As Variant
+    idsV = t.FactorIDs
+    If IsEmpty(idsV) Then
+        RenderOneCTermSymbolicLatex = ""
+        Exit Function
+    End If
+
+    Dim isAll As Boolean: isAll = IsStageAll(stage)
+    Dim st As Long: If Not isAll Then st = CLng(stage)
+
+    Dim lamIDs() As Long, lamCount As Long
+    Dim qIDs() As Long, qCount As Long
+    SplitIDs_ByExtern idsV, lamIDs, lamCount, qIDs, qCount
+
+    Dim rTerm As Long
+    rTerm = ComputeRTerm(lamCount, qIDs, qCount)
+
+    Dim skipWi As Boolean
+    skipWi = ShouldSkipWi(lamCount, qIDs, qCount, stage)
+    
+    Dim stText As String
+    stText = StageToText(stage)
+
+    Dim wiStr As String: wiStr = ""
+    If (Not isAll) And (Not skipWi) Then
+        Dim wiVal As Double
+        wiVal = GetWiValueSafe(rTerm, st)
+        If Abs(wiVal - 1#) > 0.0000000001 Then
+            wiStr = ApplyTokens(wiTpl, Array("r", "stage"), Array(CStr(rTerm), stText))
+        End If
+    End If
+
+    Dim wiMulStr As String
+    If Len(wiStr) > 0 Then wiMulStr = GetTplWarn(tpl, "SYM_WI_MUL", "\,\cdot\,") Else wiMulStr = ""
+
+    Dim lamProd As String
+    lamProd = RenderLambdaProductByIDs(lamIDs, lamCount, lamTpl, lamJoin)
+
+    Dim qProd As String
+    qProd = RenderQProductByIDs(qIDs, qCount, stText, qTpl, qJoin)
+
+    Dim lamQProd As String
+    lamQProd = JoinNonEmpty(Array(lamProd, qProd), factorJoin)
+
+    Dim tpStr As String
+    tpStr = RenderTpSymbolic(lamCount, tpl)
+
+    RenderOneCTermSymbolicLatex = ApplyTokens(termTpl, _
+        Array("MULT", "WI", "WI_MUL", "LAMQPROD", "TP"), _
+        Array(multStr, wiStr, wiMulStr, lamQProd, tpStr))
+End Function
+
+Private Function RenderOneCTermNumericLatex(ByVal t As CTerm, ByVal stage As Variant, ByVal tpl As Object) As String
+    If Abs(t.Multiplier) < 0.0000000001 Then
+        RenderOneCTermNumericLatex = ""
+        Exit Function
+    End If
+
+    ' ===== ОБРАБОТКА КОМПАКТНЫХ ТЕРМОВ =====
+    If t.TermType = 1 Then  ' ttCompact
+        RenderOneCTermNumericLatex = RenderCompactTermNumeric(t, stage, tpl)
+        Exit Function
+    End If
+    
+    ' ===== ОБРАБОТКА КЕШИРОВАННЫХ ФУНКЦИЙ =====
+    If t.TermType = 2 Then  ' ttCachedFunc
+        RenderOneCTermNumericLatex = RenderCachedFuncNumeric(t, stage, tpl)
+        Exit Function
+    End If
+
+    ' ===== ОБЫЧНАЯ ОБРАБОТКА =====
+    Dim factorJoin As String: factorJoin = GetTplWarn(tpl, "NUM_FACTOR_JOIN", "\,\cdot\,")
+    Dim termTpl As String: termTpl = GetTplWarn(tpl, "NUM_TERM_TEMPLATE", "{FACTORS}{TP}")
+
+    Dim factors As Collection: Set factors = New Collection
+
+    Dim isAll As Boolean: isAll = IsStageAll(stage)
+    Dim st As Long: If Not isAll Then st = CLng(stage)
+
+    If Abs(t.Multiplier - 1#) > 0.0000000001 Then
+        factors.Add FormatNumLatex(t.Multiplier, tpl)
+    End If
+
+    Dim idsV As Variant
+    idsV = t.FactorIDs
+    If IsEmpty(idsV) Then
+        RenderOneCTermNumericLatex = ""
+        Exit Function
+    End If
+
+    Dim lamIDs() As Long, lamCount As Long
+    Dim qIDs() As Long, qCount As Long
+    SplitIDs_ByExtern idsV, lamIDs, lamCount, qIDs, qCount
+
+    Dim rTerm As Long
+    rTerm = ComputeRTerm(lamCount, qIDs, qCount)
+
+    Dim skipWi As Boolean
+    skipWi = ShouldSkipWi(lamCount, qIDs, qCount, stage)
+
+    If (Not isAll) And (Not skipWi) Then
+        Dim wiVal As Double
+        wiVal = GetWiValueSafe(rTerm, st)
+        If Abs(wiVal - 1#) > 0.0000000001 Then
+            factors.Add FormatNumLatex(wiVal, tpl)
+        End If
+    End If
+
+    Dim i As Long
+    For i = 0 To lamCount - 1
+        factors.Add FormatNumLatex(m_LambdaValues(lamIDs(i)), tpl)
+    Next i
+
+    If qCount > 0 Then
+        factors.Add FormatNumLatex(EvalQTermNumeric(lamCount, qIDs, qCount, stage), tpl)
+    End If
+
+    Dim factorsStr As String
+    factorsStr = JoinCollection(factors, factorJoin)
+
+    Dim tpStr As String
+    tpStr = RenderTpNumeric(lamCount, tpl)
+
+    RenderOneCTermNumericLatex = ApplyTokens(termTpl, Array("FACTORS", "TP"), Array(factorsStr, tpStr))
+End Function
+
+' ===== НОВЫЕ ФУНКЦИИ ДЛЯ КОМПАКТНЫХ ТЕРМОВ =====
+
+
+Private Function RenderCompactTermSymbolic(ByVal t As CTerm, ByVal stage As Variant, ByVal tpl As Object) As String
+    Dim r As Long: r = t.Order
+    
+    Dim multTpl As String: multTpl = GetTplWarn(tpl, "SYM_MULT_TEMPLATE", "{mult}\,")
+    Dim wiTpl As String: wiTpl = GetTplWarn(tpl, "SYM_WI_TEMPLATE", "W_{ {r} }^{({stage})}\,")
+    Dim factorJoin As String: factorJoin = "\cdot "
+    
+    Dim isAll As Boolean: isAll = IsStageAll(stage)
+    Dim st As Long: If Not isAll Then st = CLng(stage)
+    Dim stText As String: stText = StageToText(stage)
+    
+    ' Multiplier
+    Dim multStr As String: multStr = ""
+    If Abs(t.Multiplier - 1#) > 0.0000000001 Then
+        multStr = ApplyTokens(multTpl, Array("mult"), Array(TrimNumberSymbolic(t.Multiplier)))
+    End If
+    
+    ' Wi ОДИН РАЗ для всего терма
+    Dim wiStr As String: wiStr = ""
+    If Not isAll Then
+        Dim wiVal As Double
+        wiVal = GetWiValueSafe(r, st)
+        If Abs(wiVal - 1#) > 0.0000000001 Then
+            wiStr = ApplyTokens(wiTpl, Array("r", "stage"), Array(CStr(r), stText))
+        End If
+    End If
+    
+    Dim wiMulStr As String
+    If Len(wiStr) > 0 Then wiMulStr = "\,\cdot\," Else wiMulStr = ""
+    
+    ' ===== ИСПРАВЛЕНИЕ: Рендерим факторы как чистые суммы ? БЕЗ W и tp =====
+    Dim factorsParts() As String
+    ReDim factorsParts(0 To t.CompactFactors.Count - 1)
+    
+    Dim i As Long: i = 0
+    Dim f As Variant
+    For Each f In t.CompactFactors
+        If TypeName(f) = "CExpr" Then
+            Dim factorExpr As CExpr
+            Set factorExpr = f
+            ' Рендерим только ? без W и tp
+            factorsParts(i) = "(" & RenderPureLambdaSum(factorExpr, tpl) & ")"
+        ElseIf TypeName(f) = "CTerm" Then
+            Dim ft As CTerm
+            Set ft = f
+            If ft.TermType = 2 Then  ' ttCachedFunc
+                factorsParts(i) = "Q_{\text{" & ft.FuncName & "}}"
+            End If
+        End If
+        i = i + 1
+    Next f
+    
+    Dim factorsStr As String
+    factorsStr = Join(factorsParts, factorJoin)
+    
+    ' Tp
+    Dim tpStr As String
+    tpStr = RenderTpSymbolic(r, tpl)
+    
+    RenderCompactTermSymbolic = multStr & wiStr & wiMulStr & factorsStr & tpStr
+End Function
+
+' ===== НОВАЯ ФУНКЦИЯ: Рендеринг чистой суммы ? БЕЗ W и tp =====
+Private Function RenderPureLambdaSum(ByVal expr As CExpr, ByVal tpl As Object) As String
+    Dim terms() As CTerm
+    terms = expr.GetTerms()
+    
+    On Error Resume Next
+    Dim ub As Long, lb As Long
+    lb = LBound(terms)
+    ub = UBound(terms)
+    On Error GoTo 0
+    
+    If Err.Number <> 0 Or ub < lb Then
+        RenderPureLambdaSum = "0"
+        Exit Function
+    End If
+    
+    Dim lamTpl As String: lamTpl = GetTplWarn(tpl, "SYM_LAM_TEMPLATE", "\lambda_{\text{{name}}}")
+    Dim joinStr As String: joinStr = " + "
+    Dim multTpl As String: multTpl = GetTplWarn(tpl, "SYM_MULT_TEMPLATE", "{mult}\,")
+    
+    Dim parts() As String
+    ReDim parts(0 To ub - lb)
+    
+    Dim i As Long, idx As Long
+    idx = 0
+    
+    For i = lb To ub
+        If Not terms(i) Is Nothing Then
+            Dim ids() As Long
+            ids = terms(i).FactorIDs
+            
+            If UBound(ids) = LBound(ids) Then
+                Dim id As Long
+                id = ids(LBound(ids))
+                
+                Dim nm As String
+                If id <= UBound(m_IDToName) Then
+                    nm = m_IDToName(id)
+                Else
+                    nm = "ID" & id
+                End If
+                
+                Dim part As String
+                part = ""
+                
+                ' Multiplier
+                If Abs(terms(i).Multiplier - 1#) > 0.0000000001 Then
+                    part = ApplyTokens(multTpl, Array("mult"), Array(TrimNumberSymbolic(terms(i).Multiplier)))
+                End If
+                
+                ' Lambda
+                part = part & ApplyTokens(lamTpl, Array("name"), Array(nm))
+                
+                parts(idx) = part
+                idx = idx + 1
+            End If
+        End If
+    Next i
+    
+    ' Склеиваем
+    Dim result As String
+    result = ""
+    For i = 0 To idx - 1
+        If Len(parts(i)) > 0 Then
+            If Len(result) > 0 Then result = result & joinStr
+            result = result & parts(i)
+        End If
+    Next i
+    
+    RenderPureLambdaSum = result
+End Function
+Private Function RenderCompactTermNumeric(ByVal t As CTerm, ByVal stage As Variant, ByVal tpl As Object) As String
+    Dim r As Long: r = t.Order
+    
+    Dim factorJoin As String: factorJoin = GetTplWarn(tpl, "NUM_FACTOR_JOIN", "\,\cdot\,")
+    
+    Dim isAll As Boolean: isAll = IsStageAll(stage)
+    Dim st As Long: If Not isAll Then st = CLng(stage)
+    
+    Dim factors As Collection
+    Set factors = New Collection
+    
+    ' Multiplier
+    If Abs(t.Multiplier - 1#) > 0.0000000001 Then
+        factors.Add FormatNumLatex(t.Multiplier, tpl)
+    End If
+    
+    ' Wi
+    If Not isAll Then
+        Dim wiVal As Double
+        wiVal = GetWiValueSafe(r, st)
+        If Abs(wiVal - 1#) > 0.0000000001 Then
+            factors.Add FormatNumLatex(wiVal, tpl)
+        End If
+    End If
+    
+    ' Факторы - ТОЛЬКО они в скобках
+    Dim f As Variant
+    For Each f In t.CompactFactors
+        If TypeName(f) = "CExpr" Then
+            Dim factorExpr As CExpr
+            Set factorExpr = f
+            
+            ' Скобки ТОЛЬКО вокруг суммы
+            factors.Add "(" & RenderPureLambdaSumNumeric(factorExpr, tpl) & ")"
+        ElseIf TypeName(f) = "CTerm" Then
+            Dim ft As CTerm
+            Set ft = f
+            If ft.TermType = 2 Then  ' ttCachedFunc
+                Dim funcVal As Double
+                funcVal = ft.GetValueForOrder(r)
+                ' Одно число - БЕЗ скобок
+                factors.Add FormatNumLatex(funcVal, tpl)
+            End If
+        End If
+    Next f
+    
+    ' Tp - добавляем через RenderTpNumeric (он сам добавляет cdot)
+    Dim factorsStr As String
+    factorsStr = JoinCollection(factors, factorJoin)
+    
+    Dim tpStr As String
+    tpStr = RenderTpNumeric(r, tpl)
+    
+    RenderCompactTermNumeric = factorsStr & tpStr
+End Function
+Private Function RenderPureLambdaSumNumeric(ByVal expr As CExpr, ByVal tpl As Object) As String
+    Dim terms() As CTerm
+    terms = expr.GetTerms()
+    
+    On Error Resume Next
+    Dim ub As Long, lb As Long
+    lb = LBound(terms)
+    ub = UBound(terms)
+    On Error GoTo 0
+    
+    If Err.Number <> 0 Or ub < lb Then
+        RenderPureLambdaSumNumeric = "0"
+        Exit Function
+    End If
+    
+    Dim joinStr As String: joinStr = " + "
+    
+    Dim parts() As String
+    ReDim parts(0 To ub - lb)
+    
+    Dim i As Long, idx As Long
+    idx = 0
+    
+    For i = lb To ub
+        If Not terms(i) Is Nothing Then
+            Dim ids() As Long
+            ids = terms(i).FactorIDs
+            
+            If UBound(ids) = LBound(ids) Then
+                Dim id As Long
+                id = ids(LBound(ids))
+                
+                If id <= UBound(m_LambdaValues) Then
+                    Dim val As Double
+                    val = m_LambdaValues(id) * terms(i).Multiplier
+                    parts(idx) = FormatNumLatex(val, tpl)
+                    idx = idx + 1
+                End If
+            End If
+        End If
+    Next i
+    
+    ' Склеиваем
+    Dim result As String
+    result = ""
+    For i = 0 To idx - 1
+        If Len(parts(i)) > 0 Then
+            If Len(result) > 0 Then result = result & joinStr
+            result = result & parts(i)
+        End If
+    Next i
+    
+    RenderPureLambdaSumNumeric = result
+End Function
+
+' ===== ????? ???????: ?????????? ????? ? =====
+Private Function CalcPureLambdaSum(ByVal expr As CExpr) As Double
+    Dim terms() As CTerm
+    terms = expr.GetTerms()
+    
+    On Error Resume Next
+    Dim ub As Long, lb As Long
+    lb = LBound(terms)
+    ub = UBound(terms)
+    On Error GoTo 0
+    
+    If Err.Number <> 0 Or ub < lb Then
+        CalcPureLambdaSum = 0#
+        Exit Function
+    End If
+    
+    Dim sumVal As Double
+    sumVal = 0#
+    
+    Dim i As Long
+    For i = lb To ub
+        If Not terms(i) Is Nothing Then
+            Dim ids() As Long
+            ids = terms(i).FactorIDs
+            
+            If UBound(ids) = LBound(ids) Then
+                Dim id As Long
+                id = ids(LBound(ids))
+                
+                If id <= UBound(m_LambdaValues) Then
+                    sumVal = sumVal + m_LambdaValues(id) * terms(i).Multiplier
+                End If
+            End If
+        End If
+    Next i
+    
+    CalcPureLambdaSum = sumVal
+End Function
+
+Private Function RenderCachedFuncSymbolic(ByVal t As CTerm, ByVal stage As Variant, ByVal tpl As Object) As String
+    ' Символьный вывод кешированной функции
+    RenderCachedFuncSymbolic = "Q_{\text{" & t.FuncName & "}}"
+End Function
+
+Private Function RenderCachedFuncNumeric(ByVal t As CTerm, ByVal stage As Variant, ByVal tpl As Object) As String
+    ' Численный вывод кешированной функции
+    Dim isAll As Boolean: isAll = IsStageAll(stage)
+    Dim st As Long: If Not isAll Then st = CLng(stage)
+    
+    Dim orderVec As Object
+    Set orderVec = GetOrComputeOrderVector(t.FuncName)
+    
+    Dim total As Double: total = 0#
+    Dim k As Variant
+    For Each k In orderVec.keys
+        Dim r As Long: r = CLng(k)
+        Dim wiVal As Double
+        If Not isAll Then
+            wiVal = GetWiValueSafe(r, st)
+        Else
+            wiVal = 1#
+        End If
+        Dim tpPow As Double: tpPow = m_Tp ^ r
+        total = total + t.Multiplier * wiVal * tpPow * CDbl(orderVec(k))
+    Next k
+    
+    RenderCachedFuncNumeric = FormatNumLatex(total, tpl)
+End Function

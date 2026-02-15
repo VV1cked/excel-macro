@@ -22,9 +22,25 @@ Public Function ParseDouble(ByVal v As Variant, ByVal context As String) As Doub
 
     If s <> "" Then
         ' Val понимает числа вида 1E-5, 2.3E+4 и т.п.
-        ParseDouble = Val(s)
+        ParseDouble = val(s)
     Else
         Err.Raise 996, , "Невозможно преобразовать в число: " & context & " = '" & CStr(v) & "'"
     End If
 End Function
 
+Public Function TryGetBounds(ByRef arr As Variant, ByRef lb As Long, ByRef ub As Long) As Boolean
+    ' Работает и для массивов объектов (CTerm), и для массивов Long, и для Variant-массивов
+    On Error GoTo Fail
+    If IsArray(arr) = False Then GoTo Fail
+
+    Err.Clear
+    lb = LBound(arr)
+    ub = UBound(arr)
+
+    If ub < lb Then GoTo Fail
+    TryGetBounds = True
+    Exit Function
+
+Fail:
+    TryGetBounds = False
+End Function
